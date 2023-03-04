@@ -1,25 +1,88 @@
-import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Home from './components/pages/Home';
+import Layout from './components/pages/Layout';
+import Animal from './components/pages/Animal';
+import axios from 'axios';
+import { IAnimal } from './models/IAnimal';
+import { AnimalContext, AnimalInterface, defaultValue } from './contexts/AnimalContext';
+import { getHoursSinceFed, getLocalStorage, setLocalStorage, toggleHungry } from './utils/Utils';
 
 function App() {
+  const [animals, setAnimals] = useState<AnimalInterface>(defaultValue);
+  const [animal, setAnimal] = useState<IAnimal>(
+    {
+      id: 0,
+      imageUrl: "",
+      isFed: false,
+      lastFed: "",
+      latinName: "",
+      longDescription: "",
+      medicine: "",
+      name: "",
+      shortDescription: "",
+      yearOfBirth: 0,
+    }
+  );
+
+  useEffect(() => {
+    if (animals.animals.length !== 0) return;
+
+    const animalStorage = getLocalStorage();
+    setAnimals({ ...animals, loader: false, animals: animalStorage });
+
+    if (animalStorage.length === 0) {
+      axios
+        .get<IAnimal[]>("https://animals.azurewebsites.net/api/animals")
+        .then((response) => {
+          setAnimals({ ...animals, loader: false, animals: response.data });
+          setLocalStorage(response.data);
+        });
+    }
+  });
+
+  useEffect(() => {
+    if (animals.animals.length < 1) return;
+    const newAnimalList = [...animals.animals];
+
+    for (let i = 0; i < newAnimalList.length; i++) {
+      let hoursSinceFed = getHoursSinceFed(newAnimalList[i])
+      if (newAnimalList[i].isFed === true && hoursSinceFed >= 4) {
+        toggleHungry(newAnimalList[i]);
+        setAnimal(newAnimalList[i])
+        newAnimalList.splice(i, 1, newAnimalList[i]);
+        setLocalStorage(newAnimalList);
+        setAnimals({ ...animals, loader: false, animals: newAnimalList });
+      }
+    }
+  }, [animals]);
+
+  animals.feedAnimal = (a: IAnimal) => {
+    const newAnimalList = [...animals.animals];
+    let sameItem = getLocalStorage();
+    for (let i = 0; i < sameItem.length; i++) {
+      if (sameItem[i].id === a.id) {
+        toggleHungry(a)
+        setAnimal(a);
+        newAnimalList.splice(i, 1, a);
+        setAnimals({ ...animals, animals: newAnimalList });
+        setLocalStorage(newAnimalList);
+      }
+    }
+  }
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <AnimalContext.Provider value={animals}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="/animal/:id" element={<Animal />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AnimalContext.Provider>
   );
 }
 
